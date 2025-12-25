@@ -4,6 +4,8 @@
 
 extern int key_spd;
 extern volatile bool req_reset_auto;
+extern volatile bool auto_repeat;
+extern volatile bool auto_finished;
 
 static const char *msgs[] = {
   " CQ CQ CQ DE JA1AOQ PSE K   ",
@@ -11,7 +13,7 @@ static const char *msgs[] = {
   "JA9OIR DE JA1AOQ GM TNX FER UR CALL b UR RST 599 ES QTH SAGAMIHARA CITY ES NAME KIMIWO HW? JA9OIR DE JA1AOQ k   ",
   "R JA1AOQ DE JA9OIR GM DR KIMIWO SAN TKS FB REPT b UR RST 599 ES QTH UOZU CITY ES NAME POKI HW? JA1AOQ DE JA9OIR k   ",
   "R DE JA1AOQ TNX FB 1ST QSO, HPE CU AGN DR POKI SAN 73 JA9OIR DE JA1AOQ TU v E E   ",
-  "DE JA9OIR TNX FB QSO ES HVE A NICE DAY KIMI SAN 73 a JA1AOQ DE JA9OIR TU v E E   ",
+  "DE JA9OIR TNX FB QSO ES HVE A NICE DAY KIMIWO SAN 73 a JA1AOQ DE JA9OIR TU v E E   ",
 };
 #define MSG_COUNT (sizeof(msgs) / sizeof(msgs[0]))
 
@@ -46,6 +48,7 @@ uint8_t job_auto()
         elem = 0;
         pending_jump = false;
         pending_gap_half = 0;
+        auto_finished = false;
     }
 
     if (left_time != 0) {
@@ -73,6 +76,10 @@ uint8_t job_auto()
     const char* msg = msgs[msg_i];
     char c = msg[pos];
     if (c == '\0') {
+        if (!auto_repeat && msg_i == (MSG_COUNT - 1)) {
+            auto_finished = true;
+            return 0;
+        }
         msg_i = (uint8_t)((msg_i + 1) % MSG_COUNT);
         pos = 0;
         gap_half = 12;
@@ -117,6 +124,10 @@ uint8_t job_auto()
 
             printAscii(32);
             if (msg[look] == '\0') {
+                if (!auto_repeat && msg_i == (MSG_COUNT - 1)) {
+                    auto_finished = true;
+                    return 0;
+                }
                 pending_msg = (uint8_t)((msg_i + 1) % MSG_COUNT);
                 pending_pos = 0;
             } else {
@@ -127,15 +138,19 @@ uint8_t job_auto()
             pending_gap_half = (int)(14 * nsp - 2);
             pending_jump = true;
         } else if (msg[look] == '\0') {
-        pending_msg = (uint8_t)((msg_i + 1) % MSG_COUNT);
-        pending_pos = 0;
-        pending_gap_half = 12;
-        pending_jump = true;
+            if (!auto_repeat && msg_i == (MSG_COUNT - 1)) {
+                auto_finished = true;
+                return 0;
+            }
+            pending_msg = (uint8_t)((msg_i + 1) % MSG_COUNT);
+            pending_pos = 0;
+            pending_gap_half = 12;
+            pending_jump = true;
         } else {
-        pending_msg = msg_i;
-        pending_pos = look;
-        pending_gap_half = 4;
-        pending_jump = true;
+            pending_msg = msg_i;
+            pending_pos = look;
+            pending_gap_half = 4;
+            pending_jump = true;
         }
     }
 

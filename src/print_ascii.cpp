@@ -24,6 +24,34 @@ static uint8_t line2[colums];
 static bool display_enabled = true;
 static bool display_dirty = false;
 
+// Simple SPSC queue for ISR-safe character enqueue
+#define PRINT_Q_SIZE 64
+static volatile uint8_t q_head = 0;
+static volatile uint8_t q_tail = 0;
+static uint8_t q_buf[PRINT_Q_SIZE];
+
+static void enqueueChar(int8_t c)
+{
+    uint8_t head = q_head;
+    uint8_t next = (uint8_t)((head + 1) % PRINT_Q_SIZE);
+    if (next == q_tail) {
+        return; // drop on overflow
+    }
+    q_buf[head] = (uint8_t)c;
+    q_head = next;
+}
+
+static bool dequeueChar(int8_t *out)
+{
+    uint8_t tail = q_tail;
+    if (tail == q_head) {
+        return false;
+    }
+    *out = (int8_t)q_buf[tail];
+    q_tail = (uint8_t)((tail + 1) % PRINT_Q_SIZE);
+    return true;
+}
+
 static void printAsc(int8_t asciinumber)
 {
     if (lcdindex > colums - 1){
@@ -39,11 +67,7 @@ static void printAsc(int8_t asciinumber)
     }
     line1[lcdindex] = asciinumber;
     ssd1306_drawchar_sz(lcdindex * FONT_WIDTH , LINE_HEIGHT * 3, asciinumber, FONT_COLOR, FONT_SCALE_16X16);
-    if (display_enabled) {
-        ssd1306_refresh();
-    } else {
-        display_dirty = true;
-    }
+    display_dirty = true;
     lcdindex += 1;
 }
 
@@ -51,23 +75,23 @@ void printAscii(int8_t c)
 {
     switch (c) {
         case 'b': // BT
-            printAsc('B');
-            printAsc('T');
+            enqueueChar('B');
+            enqueueChar('T');
             break;
         case 'a':   // AR
-            printAsc('A');
-            printAsc('R');
+            enqueueChar('A');
+            enqueueChar('R');
             break;
         case 'k':   // KN
-            printAsc('K');
-            printAsc('N');
+            enqueueChar('K');
+            enqueueChar('N');
             break;
         case 'v':   // VA
-            printAsc('V');
-            printAsc('A');
+            enqueueChar('V');
+            enqueueChar('A');
             break;
         default:
-            printAsc(c);
+            enqueueChar(c);
             break;
     }
 }
@@ -75,8 +99,20 @@ void printAscii(int8_t c)
 void setDisplayEnabled(bool enabled)
 {
     display_enabled = enabled;
+}
+
+void displayFlushIfNeeded(void)
+{
     if (display_enabled && display_dirty) {
         display_dirty = false;
         ssd1306_refresh();
+    }
+}
+
+void displayProcessQueue(void)
+{
+    int8_t c;
+    while (dequeueChar(&c)) {
+        printAsc(c);
     }
 }

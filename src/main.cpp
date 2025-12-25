@@ -17,7 +17,7 @@
 #include "cw_decoder.h"
 #include "flash_eep.h"
 
-#define WAIT_FOR_WORDSPACE 1        // wait for WORD SPACE after 7 dots
+#define WAIT_FOR_WORDSPACE 0        // wait for WORD SPACE after 7 dots
 
 // グローバルオブジェクト。初期化は main で begin() を呼ぶ。
 FLASH_EEP eep;
@@ -36,18 +36,12 @@ static char title2[]   = "     KEYER     ";
 static char title3[]   = "  Version 1.0  ";
 // ==== 自動送信制御 ====
 // 起動時は何もしない
-volatile bool auto_mode  = false; // 今、自動送信中か
-volatile bool auto_armed = false; // SWAを一度でも押したか（trueで “自動送信機能が有効”）
+volatile bool auto_mode = false;   // 今、自動送信中か
+volatile bool auto_repeat = false; // リピート再生中か
 volatile bool req_start_auto = false;
+volatile bool req_stop_auto = false;
 volatile bool req_reset_auto = false;
-
-// 停止理由（ラッチ停止）
-enum StopReason : uint8_t {
-    STOP_NONE   = 0,
-    STOP_PADDLE = 1, // DOT/DASHで停止（ラッチ）
-    STOP_SWB    = 2, // SWBで停止（ラッチ）
-};
-volatile StopReason stop_reason = STOP_NONE;
+volatile bool auto_finished = false;
 
 // ===================== 画面表示 =====================
 static void disp_header()
@@ -228,52 +222,51 @@ void TIM1_UP_IRQHandler(void)
 
     bool dotPressed  = !GPIO_digitalRead(PIN_DOT);
     bool dashPressed = !GPIO_digitalRead(PIN_DASH);
-    bool swaPressed  = !GPIO_digitalRead(PIN_SWA);
     bool swbPressed  = !GPIO_digitalRead(PIN_SWB);
 
     // フラグのクリア
 	  TIM1->INTFR &= (uint16_t)~TIM_IT_Update;
 
-    bool allReleased = (!dotPressed && !dashPressed && !swaPressed && !swbPressed);
-    static bool prevAllReleased = true; // power-on直後に開始しないため true
-
-    // --- SWB 押下エッジ検出（ラッチ停止） ---
+    // --- SWB 押下エッジ検出（停止） ---
     static bool prevSWB = false;
     if (!prevSWB && swbPressed) {
         auto_mode = false;
-        stop_reason = STOP_SWB;   // ラッチ
-        keyup();                  // 即ミュート（自動送信途中でも切る）
+        auto_finished = false;
+        keyup(); // 自動送信途中でも即ミュート
     }
     prevSWB = swbPressed;
 
-    // --- SWA：ラッチ解除して先頭から開始 ---
+    // --- SWA 押下→開始 ---
     if (req_start_auto) {
         req_start_auto = false;
-        auto_armed = true;
         auto_mode = true;
-        stop_reason = STOP_NONE;  // 解除
-        req_reset_auto = true;    // msgs[0]へ
+        auto_finished = false;
+        req_reset_auto = true; // msgs[0]へ
     }
 
-    // --- DOT/DASH：自動送信を停止（ラッチ）---
+    // --- SWA 押下中の停止要求 ---
+    if (req_stop_auto) {
+        req_stop_auto = false;
+        auto_mode = false;
+        auto_finished = false;
+        keyup();
+    }
+
+    // --- DOT/DASH：自動送信を停止 ---
     if (auto_mode && (dotPressed || dashPressed)) {
         auto_mode = false;
-        stop_reason = STOP_PADDLE; // ★ラッチ（離しても再開しない）
-        keyup();                   // 自動送信途中でも即ミュート
+        auto_finished = false;
+        keyup(); // 自動送信途中でも即ミュート
     }
 
-    // --- 何も押されない → 自動再開 ---
-    // ★STOP_SWB / STOP_PADDLE のどちらでも再開しない（SWAのみで再開）
-    if (auto_armed && allReleased && !prevAllReleased) {
-        if (stop_reason == STOP_NONE) {
-            auto_mode = true;
-            req_reset_auto = true;  // msgs[0]先頭へ
-        }
-    }
-    prevAllReleased = allReleased;
-
-    // 出力（ラッチ停止中でも手動パドルは有効）
+    // 出力（停止中でも手動パドルは有効）
     uint8_t on = auto_mode ? job_auto() : job_paddle();
+    if (auto_mode && auto_finished && on == 0) {
+        auto_mode = false;
+        auto_finished = false;
+        keyup();
+        return;
+    }
     if (on) {
         keydown();
     } else {
@@ -300,10 +293,13 @@ int main()
         // SWAだけデバウンスして「押した瞬間」を拾う
         static uint32_t tA = 0;
         static int lastA = high;
+        static bool swa_active = false;
+        static uint32_t swa_press_time = 0;
         const uint32_t DEB = 30;
         static bool display_enabled = true;
 
   		static uint32_t last_tick = 0;
+        static uint32_t last_display_flush = 0;
   		uint32_t now = millis();
 
   		if ((now - last_tick) >= 10) {
@@ -311,12 +307,27 @@ int main()
   		    update_speed_from_adc(); // ???E????
   		    int a = GPIO_digitalRead(PIN_SWA);
 
-  		    if (a != lastA && (now - tA) > DEB) {
-  		        tA = now;
-  		        lastA = a;
-  		        if (a == low) req_start_auto = true;
-  		    }
-  		}
+		    if (a != lastA && (now - tA) > DEB) {
+		        tA = now;
+		        lastA = a;
+		        if (a == low) {
+                    if (auto_mode) {
+                        req_stop_auto = true;
+                        swa_active = false;
+                    } else {
+                        swa_active = true;
+                        swa_press_time = now;
+                    }
+		        } else {
+                    if (swa_active && !auto_mode) {
+                        uint32_t held = now - swa_press_time;
+                        auto_repeat = (held >= 2000);
+                        req_start_auto = true;
+                    }
+                    swa_active = false;
+                }
+		    }
+		}
         if (display_enabled != display_request) {
             display_enabled = display_request;
             setDisplayEnabled(display_enabled);
@@ -324,6 +335,11 @@ int main()
                 header_dirty = false;
                 ssd1306_refresh();
             }
+        }
+        displayProcessQueue();
+        if (display_request && (now - last_display_flush) >= 50) {
+            last_display_flush = now;
+            displayFlushIfNeeded();
         }
         if (!auto_mode) {
             cwDecoder();

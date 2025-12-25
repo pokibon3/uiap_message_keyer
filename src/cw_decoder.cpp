@@ -55,8 +55,8 @@ static gap_type_t classify_gap(uint32_t gap, uint32_t unit)
     if (gap < (unit * 9) / 2) {
         return GAP_CHAR;
     }
-    // 6 * unit 
-    if (gap >= unit * 6) {
+    // 5 * unit 
+    if (gap >= unit * 5) {
         return GAP_WORD;
     }
 
@@ -144,7 +144,7 @@ int cwDecoder()
 
         ///////////////////////////////////////////////////////////////
         // now we will check which kind of baud we have - dit or dah //
-        // and what kind of pause we do have 1 - 3 or 7 pause        //
+        // and what kind of pause we do have 1 - 3 or 5 pause        //
         // we think that hightimeavg = 1 bit                         //
         ///////////////////////////////////////////////////////////////
         if (filteredstate != filteredstatebefore){
@@ -185,7 +185,7 @@ int cwDecoder()
         // write if no more letters //
         //////////////////////////////
         uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
-        if ((millis() - startttimelow) > unit * 6 && stop == low) {
+        if ((millis() - startttimelow) > unit * 5 && stop == low) {
             decodeAscii(decode(code, &sw));
             code[0] = '\0';
             stop = high;
