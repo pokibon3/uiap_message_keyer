@@ -1,4 +1,4 @@
-//==================================================================//
+﻿//==================================================================//
 // UIAP_keyer_for_ch32fun
 // BASE Software from : https://www.gejigeji.com/?page_id=1045
 // Modified by Kimio Ohe JA9OIR/JA1AOQ
@@ -9,18 +9,16 @@
 #include "keyer_hal.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #define SSD1306_128X64
 #include "ssd1306_i2c.h"
 #include "ssd1306.h"
 #include "print_ascii.h"
 #include "message_keyer.h"
 #include "cw_decoder.h"
-#include "flash_eep.h"
+#include "rec_message.h"
 
 #define WAIT_FOR_WORDSPACE 0        // wait for WORD SPACE after 7 dots
-
-// グローバルオブジェクト。初期化は main で begin() を呼ぶ。
-FLASH_EEP eep;
 
 // ==== 変数 ====
 int  key_spd = 1000;
@@ -33,11 +31,13 @@ int paddle_old = PDL_FREE;
 static bool header_dirty = false;
 static char title1[]   = "  UIAP Message ";
 static char title2[]   = "     KEYER     ";
-static char title3[]   = "  Version 1.0  ";
+static char title3[]   = "  Version 1.1  ";
+void keyup();
+static volatile uint8_t req_start_msg = 0;
 // ==== 自動送信制御 ====
-// 起動時は何もしない
-volatile bool auto_mode = false;   // 今、自動送信中か
-volatile bool auto_repeat = false; // リピート再生中か
+// 起動時は何もしなぁE
+volatile bool auto_mode = false;   // 今、�E動送信中ぁE
+volatile bool auto_repeat = false; // リピ�Eト�E生中ぁE
 volatile bool req_start_auto = false;
 volatile bool req_stop_auto = false;
 volatile bool req_reset_auto = false;
@@ -68,17 +68,42 @@ static void disp_title()
     ssd1306_refresh();
 }
 
-
-static void eep_init()
+uint8_t oled_width(void)
 {
-    uint8_t buf[64];
-    int r = eep.read(0, buf);
-    buf[0] = 0x00; 
-    r = eep.write(0, buf);
-    // dummy write to avoid "unused variable" warning
+    return SSD1306_W;
 }
 
-// ===================== 手動パドル処理（SWA/SWBは混ぜない） =====================
+uint8_t oled_height(void)
+{
+    return SSD1306_H;
+}
+
+void oled_fill(uint8_t color)
+{
+    ssd1306_fillRect(0, 0, SSD1306_W, SSD1306_H, color);
+}
+
+void oled_drawstr8(uint8_t x, uint8_t y, const char *text, uint8_t color)
+{
+    ssd1306_drawstr_sz(x, y, (char *)text, color, fontsize_8x8);
+}
+
+void oled_drawchar16(uint8_t x, uint8_t y, uint8_t chr, uint8_t color)
+{
+    ssd1306_drawchar_sz(x, y, chr, color, fontsize_16x16);
+}
+
+void oled_hline(uint8_t y, uint8_t color)
+{
+    ssd1306_drawFastHLine(0, y, SSD1306_W, color);
+}
+
+void oled_refresh(void)
+{
+    ssd1306_refresh();
+}
+
+// ===================== 手動パドル処琁E��EWA/SWBは混ぜなぁE��E=====================
 uint8_t job_paddle()
 {
     static uint32_t left_time = 0;
@@ -165,14 +190,16 @@ uint8_t job_paddle()
     return 1;
 }
 
-// ===================== トーン制御 =====================
+// ===================== ト�Eン制御 =====================
 void keydown()
 {
     if (tone_enabled) return;
     tone_enabled = true;
 	start_pwm();
     display_request = false;
-	GPIO_digitalWrite(PIN_KEYOUT, high);  // ON
+    if (!rec_is_record_mode()) {
+	    GPIO_digitalWrite(PIN_KEYOUT, high);  // ON
+    }
     setstate(high);
 }
 
@@ -181,7 +208,9 @@ void keyup()
 	stop_pwm();
     tone_enabled = false;
     display_request = true;
-	GPIO_digitalWrite(PIN_KEYOUT, low);   // OFF
+    if (!rec_is_record_mode()) {
+	    GPIO_digitalWrite(PIN_KEYOUT, low);   // OFF
+    }
     setstate(low);
 }
 
@@ -189,10 +218,10 @@ static inline long map(long x,
                               long in_min, long in_max,
                               long out_min, long out_max)
 {
-    // Arduino本家と同じくゼロ除算チェックはしない（in_max == in_min だと未定義）
+    // Arduino本家と同じくゼロ除算チェチE��はしなぁE��En_max == in_min だと未定義�E�E
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
-// ==== ADCからスピード読み込み ====
+// ==== ADCからスピ�Eド読み込み ====
 void update_speed_from_adc()
 {
     static int old_wpm;
@@ -216,52 +245,48 @@ void update_speed_from_adc()
 }
 
 
-// ===================== タイマー割り込み =====================
+// ===================== タイマ�E割り込み =====================
 void TIM1_UP_IRQHandler(void)
 {
 
     bool dotPressed  = !GPIO_digitalRead(PIN_DOT);
     bool dashPressed = !GPIO_digitalRead(PIN_DASH);
-    bool swbPressed  = !GPIO_digitalRead(PIN_SWB);
 
     // フラグのクリア
 	  TIM1->INTFR &= (uint16_t)~TIM_IT_Update;
 
-    // --- SWB 押下エッジ検出（停止） ---
-    static bool prevSWB = false;
-    if (!prevSWB && swbPressed) {
-        auto_mode = false;
-        auto_finished = false;
-        keyup(); // 自動送信途中でも即ミュート
-    }
-    prevSWB = swbPressed;
+    if (!rec_is_record_mode()) {
+        if (req_start_auto) {
+            req_start_auto = false;
+            auto_mode = true;
+            auto_finished = false;
+            req_reset_auto = true;
+            set_active_message(req_start_msg);
+        }
 
-    // --- SWA 押下→開始 ---
-    if (req_start_auto) {
-        req_start_auto = false;
-        auto_mode = true;
-        auto_finished = false;
-        req_reset_auto = true; // msgs[0]へ
-    }
+        if (req_stop_auto) {
+            req_stop_auto = false;
+            auto_mode = false;
+            auto_finished = false;
+            keyup();
+        }
 
-    // --- SWA 押下中の停止要求 ---
-    if (req_stop_auto) {
-        req_stop_auto = false;
-        auto_mode = false;
-        auto_finished = false;
-        keyup();
-    }
-
-    // --- DOT/DASH：自動送信を停止 ---
-    if (auto_mode && (dotPressed || dashPressed)) {
-        auto_mode = false;
-        auto_finished = false;
-        keyup(); // 自動送信途中でも即ミュート
+        if (auto_mode && (dotPressed || dashPressed)) {
+            auto_mode = false;
+            auto_finished = false;
+            keyup();
+        }
+    } else {
+        if (auto_mode) {
+            auto_mode = false;
+            auto_finished = false;
+            keyup();
+        }
     }
 
     // 出力（停止中でも手動パドルは有効）
-    uint8_t on = auto_mode ? job_auto() : job_paddle();
-    if (auto_mode && auto_finished && on == 0) {
+    uint8_t on = (auto_mode && !rec_is_record_mode()) ? job_auto() : job_paddle();
+    if (!rec_is_record_mode() && auto_mode && auto_finished && on == 0) {
         auto_mode = false;
         auto_finished = false;
         keyup();
@@ -286,47 +311,174 @@ int main()
 	GPIO_ADCinit();
 	tim1_int_init();			//
 	tim2_pwm_init();            // TIM2 PWM Setup
-    eep_init();
+    rec_set_header_cb(disp_header);
+    rec_init();
     disp_title();
     while (1)
     {
-        // SWAだけデバウンスして「押した瞬間」を拾う
+        // SWA/SWB チE��ウンスとモード制御�E�離した時に確定！E
         static uint32_t tA = 0;
+        static uint32_t tB = 0;
         static int lastA = high;
-        static bool swa_active = false;
+        static int lastB = high;
+        static bool swa_pressed = false;
+        static bool swb_pressed = false;
+        static bool swa_long_fired = false;
+        static bool swb_long_fired = false;
+        static bool swa_ignore_release = false;
+        static bool swb_ignore_release = false;
+        static bool combo_release_suppress = false;
         static uint32_t swa_press_time = 0;
+        static uint32_t swb_press_time = 0;
+        static uint32_t combo_start = 0;
+        static bool combo_armed = false;
+        static bool combo_fired = false;
         const uint32_t DEB = 30;
         static bool display_enabled = true;
 
-  		static uint32_t last_tick = 0;
+		static uint32_t last_tick = 0;
         static uint32_t last_display_flush = 0;
-  		uint32_t now = millis();
+		uint32_t now = millis();
 
-  		if ((now - last_tick) >= 10) {
-  		    last_tick = now;
-  		    update_speed_from_adc(); // ???E????
-  		    int a = GPIO_digitalRead(PIN_SWA);
+		if ((now - last_tick) >= 10) {
+		    last_tick = now;
+		    update_speed_from_adc();
+		    int a = GPIO_digitalRead(PIN_SWA);
+            int b = GPIO_digitalRead(PIN_SWB);
 
 		    if (a != lastA && (now - tA) > DEB) {
 		        tA = now;
 		        lastA = a;
 		        if (a == low) {
-                    if (auto_mode) {
-                        req_stop_auto = true;
-                        swa_active = false;
-                    } else {
-                        swa_active = true;
-                        swa_press_time = now;
-                    }
+                    swa_pressed = true;
+                    swa_press_time = now;
+                    swa_long_fired = false;
+                    swa_ignore_release = false;
 		        } else {
-                    if (swa_active && !auto_mode) {
-                        uint32_t held = now - swa_press_time;
-                        auto_repeat = (held >= 2000);
-                        req_start_auto = true;
+                    if (swa_ignore_release) {
+                        swa_ignore_release = false;
+                        swa_pressed = false;
+                        if (combo_armed) {
+                            combo_armed = false;
+                            combo_fired = false;
+                            combo_start = 0;
+                        }
+                    } else {
+                        ui_mode_t mode = rec_get_ui_mode();
+                        if (mode == UI_MODE_RECORD_SELECT) {
+                            rec_record_start(0);
+                        } else if (mode == UI_MODE_RECORDING) {
+                            rec_record_finish(0);
+                        } else if (mode == UI_MODE_NORMAL) {
+                            if (auto_mode) {
+                                req_stop_auto = true;
+                            } else {
+                                uint32_t held = now - swa_press_time;
+                                auto_repeat = (held >= 2000);
+                                req_start_msg = 0;
+                                rec_load_message(0);
+                                req_start_auto = true;
+                            }
+                        }
                     }
-                    swa_active = false;
+                    if (combo_armed) {
+                        combo_armed = false;
+                        combo_fired = false;
+                        combo_start = 0;
+                    }
+                    swa_pressed = false;
                 }
 		    }
+
+            if (b != lastB && (now - tB) > DEB) {
+		        tB = now;
+		        lastB = b;
+		        if (b == low) {
+                    swb_pressed = true;
+                    swb_press_time = now;
+                    swb_long_fired = false;
+                    swb_ignore_release = false;
+		        } else {
+                    if (swb_ignore_release) {
+                        swb_ignore_release = false;
+                        swb_pressed = false;
+                        if (combo_armed) {
+                            combo_armed = false;
+                            combo_fired = false;
+                            combo_start = 0;
+                        }
+                    } else {
+                        ui_mode_t mode = rec_get_ui_mode();
+                        if (mode == UI_MODE_RECORD_SELECT) {
+                            rec_record_start(1);
+                        } else if (mode == UI_MODE_RECORDING) {
+                            rec_record_finish(1);
+                        } else if (mode == UI_MODE_NORMAL) {
+                            if (auto_mode) {
+                                req_stop_auto = true;
+                            } else {
+                                uint32_t held = now - swb_press_time;
+                                auto_repeat = (held >= 2000);
+                                req_start_msg = 1;
+                                rec_load_message(1);
+                                req_start_auto = true;
+                            }
+                        }
+                    }
+                    if (combo_armed) {
+                        combo_armed = false;
+                        combo_fired = false;
+                        combo_start = 0;
+                    }
+                    swb_pressed = false;
+                }
+		    }
+
+            if (swa_pressed && swb_pressed) {
+                if (!combo_armed) {
+                    combo_armed = true;
+                    combo_start = now;
+                    combo_fired = false;
+                }
+                if (combo_armed && !combo_fired && (now - combo_start) >= 2000) {
+                    combo_fired = true;
+                    combo_armed = false;
+                    combo_start = 0;
+                    swa_ignore_release = true;
+                    swb_ignore_release = true;
+                    swa_long_fired = true;
+                    swb_long_fired = true;
+                    combo_release_suppress = true;
+                    if (rec_get_ui_mode() == UI_MODE_NORMAL) {
+                        rec_enter_mode();
+                    } else {
+                        rec_exit_mode();
+                    }
+                }
+            } else if (rec_get_ui_mode() == UI_MODE_NORMAL && !auto_mode && !combo_release_suppress) {
+                if (swa_pressed && !swb_pressed && !swa_long_fired && (now - swa_press_time) >= 2000) {
+                    swa_long_fired = true;
+                    swa_ignore_release = true;
+                    auto_repeat = true;
+                    req_start_msg = 0;
+                    rec_load_message(0);
+                    req_start_auto = true;
+                } else if (swb_pressed && !swa_pressed && !swb_long_fired && (now - swb_press_time) >= 2000) {
+                    swb_long_fired = true;
+                    swb_ignore_release = true;
+                    auto_repeat = true;
+                    req_start_msg = 1;
+                    rec_load_message(1);
+                    req_start_auto = true;
+                }
+            }
+
+            if (!swa_pressed && !swb_pressed) {
+                combo_armed = false;
+                combo_fired = false;
+                combo_start = 0;
+                combo_release_suppress = false;
+            }
 		}
         if (display_enabled != display_request) {
             display_enabled = display_request;
@@ -341,9 +493,11 @@ int main()
             last_display_flush = now;
             displayFlushIfNeeded();
         }
-        if (!auto_mode) {
+        if (!auto_mode || rec_is_record_mode()) {
             cwDecoder();
         }
   		Delay_Ms(1);
     }
 }
+
+

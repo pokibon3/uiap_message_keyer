@@ -1,21 +1,7 @@
-#include "print_ascii.h"
-
-#include <stdint.h>
-
-typedef enum {
-    fontsize_8x8 = 1,
-    fontsize_16x16 = 2,
-    fontsize_32x32 = 4,
-    fontsize_64x64 = 8,
-} font_size_t;
-
-void ssd1306_drawchar_sz(uint8_t x, uint8_t y, uint8_t chr, uint8_t color, font_size_t font_size);
-void ssd1306_refresh(void);
-
+﻿#include "print_ascii.h"
 #define FONT_WIDTH 12
 #define FONT_COLOR 1
 #define LINE_HEIGHT 16
-#define FONT_SCALE_16X16 fontsize_16x16
 const int colums = 10; /// have to be 16 or 20
 
 static int lcdindex = 0;
@@ -23,6 +9,7 @@ static uint8_t line1[colums];
 static uint8_t line2[colums];
 static bool display_enabled = true;
 static bool display_dirty = false;
+static void (*ascii_hook)(int8_t c) = nullptr;
 
 // Simple SPSC queue for ISR-safe character enqueue
 #define PRINT_Q_SIZE 64
@@ -54,19 +41,22 @@ static bool dequeueChar(int8_t *out)
 
 static void printAsc(int8_t asciinumber)
 {
+    if (ascii_hook != nullptr) {
+        ascii_hook(asciinumber);
+    }
     if (lcdindex > colums - 1){
         lcdindex = 0;
         for (int i = 0; i <= colums - 1 ; i++){
-            ssd1306_drawchar_sz(i * FONT_WIDTH , LINE_HEIGHT, line2[i], FONT_COLOR, FONT_SCALE_16X16);
+            oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT, line2[i], FONT_COLOR);
             line2[i] = line1[i];
         }
         for (int i = 0; i <= colums - 1 ; i++){
-            ssd1306_drawchar_sz(i * FONT_WIDTH , LINE_HEIGHT * 2, line1[i], FONT_COLOR, FONT_SCALE_16X16);
-            ssd1306_drawchar_sz(i * FONT_WIDTH , LINE_HEIGHT * 3, 32, FONT_COLOR, FONT_SCALE_16X16);
+            oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT * 2, line1[i], FONT_COLOR);
+            oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT * 3, 32, FONT_COLOR);
         }
     }
     line1[lcdindex] = asciinumber;
-    ssd1306_drawchar_sz(lcdindex * FONT_WIDTH , LINE_HEIGHT * 3, asciinumber, FONT_COLOR, FONT_SCALE_16X16);
+    oled_drawchar16(lcdindex * FONT_WIDTH , LINE_HEIGHT * 3, asciinumber, FONT_COLOR);
     display_dirty = true;
     lcdindex += 1;
 }
@@ -105,7 +95,7 @@ void displayFlushIfNeeded(void)
 {
     if (display_enabled && display_dirty) {
         display_dirty = false;
-        ssd1306_refresh();
+        oled_refresh();
     }
 }
 
@@ -116,3 +106,25 @@ void displayProcessQueue(void)
         printAsc(c);
     }
 }
+
+void setPrintAsciiHook(void (*hook)(int8_t c))
+{
+    ascii_hook = hook;
+}
+
+void printAsciiReset(void)
+{
+    lcdindex = 0;
+    for (int i = 0; i < colums; i++) {
+        line1[i] = 32;
+        line2[i] = 32;
+    }
+    display_dirty = true;
+}
+
+
+
+
+
+
+

@@ -2,6 +2,7 @@
   ==== ?????? ====
   - PD1 ? SWIO(????/????) ??????????
 */
+#include <stdint.h>
 #define micros() (SysTick->CNT / DELAY_US_TIME)
 #define millis() (SysTick->CNT / DELAY_MS_TIME)
 
@@ -19,6 +20,8 @@ extern int GPIO_setup(void);
 extern void start_pwm(void);
 extern void stop_pwm(void);
 extern void tim2_pwm_init(void);
+void pwm_set_freq(uint32_t hz);
+void pwm_restore_default(void);
 extern void tim1_int_init(void);
 
 extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));

@@ -23,3 +23,5 @@
 
 const char* morseForChar(char c);
 uint8_t job_auto();
+void set_message_buffers(uint8_t *msg_a, uint8_t *msg_b);
+void set_active_message(uint8_t index);

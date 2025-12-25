@@ -7,18 +7,35 @@ extern volatile bool req_reset_auto;
 extern volatile bool auto_repeat;
 extern volatile bool auto_finished;
 
-static const char *msgs[] = {
-  " CQ CQ CQ DE JA1AOQ PSE K   ",
-  "JA1AOQ DE JA9OIR K   ",
-  "JA9OIR DE JA1AOQ GM TNX FER UR CALL b UR RST 599 ES QTH SAGAMIHARA CITY ES NAME KIMIWO HW? JA9OIR DE JA1AOQ k   ",
-  "R JA1AOQ DE JA9OIR GM DR KIMIWO SAN TKS FB REPT b UR RST 599 ES QTH UOZU CITY ES NAME POKI HW? JA1AOQ DE JA9OIR k   ",
-  "R DE JA1AOQ TNX FB 1ST QSO, HPE CU AGN DR POKI SAN 73 JA9OIR DE JA1AOQ TU v E E   ",
-  "DE JA9OIR TNX FB QSO ES HVE A NICE DAY KIMIWO SAN 73 a JA1AOQ DE JA9OIR TU v E E   ",
-};
-#define MSG_COUNT (sizeof(msgs) / sizeof(msgs[0]))
+static uint8_t *msg_bufs[2] = {nullptr, nullptr};
+static uint8_t active_msg = 0;
 
 const char* morseForChar(char c) {
   return encode_us_char(c);
+}
+
+void set_message_buffers(uint8_t *msg_a, uint8_t *msg_b)
+{
+    msg_bufs[0] = msg_a;
+    msg_bufs[1] = msg_b;
+}
+
+void set_active_message(uint8_t index)
+{
+    active_msg = (index > 0) ? 1 : 0;
+}
+
+static inline uint8_t msg_length(uint8_t index)
+{
+    if (msg_bufs[index] == nullptr) return 0;
+    return msg_bufs[index][0];
+}
+
+static inline char msg_char(uint8_t index, uint16_t pos)
+{
+    uint8_t len = msg_length(index);
+    if (pos >= len) return '\0';
+    return (char)msg_bufs[index][1 + pos];
 }
 
 uint8_t job_auto()
@@ -26,14 +43,12 @@ uint8_t job_auto()
     static uint32_t left_time = 0;
     static int auto_squeeze = 0;
     static int gap_half = 0;
-    static uint8_t msg_i = 0;
     static uint16_t pos = 0;
 
     static const char* seq = nullptr;
     static uint8_t elem = 0;
 
     static bool pending_jump = false;
-    static uint8_t pending_msg = 0;
     static uint16_t pending_pos = 0;
     static int pending_gap_half = 0;
 
@@ -42,7 +57,6 @@ uint8_t job_auto()
         left_time = 0;
         auto_squeeze = 0;
         gap_half = 0;
-        msg_i = 0;
         pos = 0;
         seq = nullptr;
         elem = 0;
@@ -64,7 +78,6 @@ uint8_t job_auto()
 
     if (pending_jump) {
         pending_jump = false;
-        msg_i = pending_msg;
         pos   = pending_pos;
         gap_half = pending_gap_half;
         pending_gap_half = 0;
@@ -73,21 +86,25 @@ uint8_t job_auto()
         return 0;
     }
 
-    const char* msg = msgs[msg_i];
-    char c = msg[pos];
-    if (c == '\0') {
-        if (!auto_repeat && msg_i == (MSG_COUNT - 1)) {
+    uint8_t msg_len = msg_length(active_msg);
+    if (msg_len == 0) {
+        auto_finished = true;
+        return 0;
+    }
+    if (pos >= msg_len) {
+        if (!auto_repeat) {
             auto_finished = true;
             return 0;
         }
-        msg_i = (uint8_t)((msg_i + 1) % MSG_COUNT);
         pos = 0;
         gap_half = 12;
         return 0;
     }
 
+    char c = msg_char(active_msg, pos);
+
     if (c == ' ') {
-        while (msg[pos] == ' ') pos++;
+        while (pos < msg_len && msg_char(active_msg, pos) == ' ') pos++;
         gap_half = 12;
         return 0;
     }
@@ -118,36 +135,36 @@ uint8_t job_auto()
 
     if (seq[elem] == '\0') {
         uint16_t look = pos + 1;
-        if (msg[look] == ' ') {
+        if (look < msg_len && msg_char(active_msg, look) == ' ') {
             uint8_t nsp = 0;
-            while (msg[look] == ' ') { nsp++; look++; }
+            while (look < msg_len && msg_char(active_msg, look) == ' ') { nsp++; look++; }
 
             printAscii(32);
-            if (msg[look] == '\0') {
-                if (!auto_repeat && msg_i == (MSG_COUNT - 1)) {
-                    auto_finished = true;
+            if (look >= msg_len) {
+                if (!auto_repeat) {
+                    pending_pos = msg_len;
+                    pending_gap_half = (int)(14 * nsp - 2);
+                    pending_jump = true;
                     return 0;
                 }
-                pending_msg = (uint8_t)((msg_i + 1) % MSG_COUNT);
                 pending_pos = 0;
             } else {
-                pending_msg = msg_i;
                 pending_pos = look;
             }
 
             pending_gap_half = (int)(14 * nsp - 2);
             pending_jump = true;
-        } else if (msg[look] == '\0') {
-            if (!auto_repeat && msg_i == (MSG_COUNT - 1)) {
-                auto_finished = true;
+        } else if (look >= msg_len) {
+            if (!auto_repeat) {
+                pending_pos = msg_len;
+                pending_gap_half = 4;
+                pending_jump = true;
                 return 0;
             }
-            pending_msg = (uint8_t)((msg_i + 1) % MSG_COUNT);
             pending_pos = 0;
             pending_gap_half = 12;
             pending_jump = true;
         } else {
-            pending_msg = msg_i;
             pending_pos = look;
             pending_gap_half = 4;
             pending_jump = true;

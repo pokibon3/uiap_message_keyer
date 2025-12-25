@@ -44,6 +44,9 @@ void tim1_int_init()
  * initialize TIM2 for PWM
  */
  #define TIM2_DEFAULT 0xff
+static uint16_t pwm_default_psc = 312;
+static uint16_t pwm_default_arr = 255;
+
 void tim2_pwm_init( void )
 {
     // Enable GPIOC and TIM2
@@ -63,9 +66,9 @@ void tim2_pwm_init( void )
     
     // SMCFGR: default clk input is CK_INT
     // set TIM2 clock prescaler divider 
-    TIM2->PSC = 312;
+    TIM2->PSC = pwm_default_psc;
     // set PWM total cycle width
-    TIM2->ATRLR = 255;
+    TIM2->ATRLR = pwm_default_arr;
     
     // for channel 1 and 2, let CCxS stay 00 (output), set OCxM to 110 (PWM I)
     // enabling preload causes the new pulse width in compare capture register only to come into effect when UG bit in SWEVGR is set (= initiate update) (auto-clears)
@@ -82,7 +85,7 @@ void tim2_pwm_init( void )
     // initialize counter
     TIM2->SWEVGR |= TIM_UG;
     // set default duty cycle 50% for channel 1 (600Hz tone)
-    TIM2->CH2CVR = 128;
+    TIM2->CH2CVR = (uint16_t)(pwm_default_arr / 2);
     // Enable TIM2
     //TIM2->CTLR1 |= TIM_CEN;
 }
@@ -91,6 +94,8 @@ void tim2_pwm_init( void )
 void start_pwm() 
 {
     AFIO->PCFR1 |= AFIO_PCFR1_TIM2_REMAP_FULLREMAP;
+    TIM2->CNT = 0;
+    TIM2->SWEVGR |= TIM_UG;
     TIM2->CTLR1 |= TIM_CEN;
 }
 
@@ -98,6 +103,33 @@ void stop_pwm()
 {
     AFIO->PCFR1 &= ~AFIO_PCFR1_TIM2_REMAP_FULLREMAP;
     TIM2->CTLR1 &= ~TIM_CEN;
+}
+
+void pwm_set_freq(uint32_t hz)
+{
+    if (hz == 0) return;
+    uint32_t base_clk = 48000000u;
+    uint32_t target_clk = 1000000;
+    uint32_t psc = (base_clk / target_clk);
+    if (psc == 0) psc = 1;
+    if (psc > 0) psc -= 1;
+    uint32_t arr = (target_clk / hz);
+    if (arr == 0) arr = 1;
+    if (arr > 0) arr -= 1;
+    if (arr > 0xFFFF) arr = 0xFFFF;
+
+    TIM2->PSC = (uint16_t)psc;
+    TIM2->ATRLR = (uint16_t)arr;
+    TIM2->CH2CVR = (uint16_t)(arr / 2);
+    TIM2->SWEVGR |= TIM_UG;
+}
+
+void pwm_restore_default(void)
+{
+    TIM2->PSC = pwm_default_psc;
+    TIM2->ATRLR = pwm_default_arr;
+    TIM2->CH2CVR = (uint16_t)(pwm_default_arr / 2);
+    TIM2->SWEVGR |= TIM_UG;
 }
 
 //==================================================================
