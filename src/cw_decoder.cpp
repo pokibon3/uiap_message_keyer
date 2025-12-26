@@ -15,11 +15,12 @@ static uint16_t filteredstatebefore = low;
 static uint32_t starttimehigh;
 static uint32_t highduration;
 static uint32_t lasthighduration;
-static uint32_t hightimesavg;
+static uint32_t hightimesavg = 60; // start at ~20WPM (dot=60ms)
 static uint32_t startttimelow;
 static uint32_t lowduration;
 static uint32_t laststarttime = 0;
 #define  nbtime     6  /// ms noise blanker
+#define  MIN_TRAIN_MS 10  /// ignore shorter pulses on startup/noise
 
 static char code[20];
 static uint16_t stop = low;
@@ -85,11 +86,9 @@ static int decodeAscii(int16_t asciinumber)
         printAscii('V');
         printAscii('A');
     } else if (asciinumber == 5) {            // ホレ
-        printAscii('^');
         printAscii(0xce);
         printAscii(0xda);
     } else if (asciinumber == 6) {            // ラタ
-        printAscii('^');
         printAscii(0xd7);
         printAscii(0xc0);
     } else {
@@ -133,11 +132,13 @@ int cwDecoder()
             if (filteredstate == low) {
                 startttimelow = millis();
                 highduration = (millis() - starttimehigh);
-                if (highduration < (2*hightimesavg) || hightimesavg == 0) {
-                    hightimesavg = (highduration+hightimesavg+hightimesavg) / 3;     // now we know avg dit time ( rolling 3 avg)
-                }
-                if (highduration > (5*hightimesavg) ) {
-                    hightimesavg = highduration+hightimesavg;     // if speed decrease fast ..
+                if (highduration >= MIN_TRAIN_MS) {
+                    if (highduration < (2*hightimesavg) || hightimesavg == 0) {
+                        hightimesavg = (highduration+hightimesavg+hightimesavg) / 3;     // now we know avg dit time ( rolling 3 avg)
+                    }
+                    if (highduration > (5*hightimesavg) ) {
+                        hightimesavg = highduration+hightimesavg;     // if speed decrease fast ..
+                    }
                 }
             }
         }
@@ -163,7 +164,7 @@ int cwDecoder()
         }
         if (filteredstate == high) {  //// we did end a LOW
 
-            if (hightimesavg > 0) {
+            if (hightimesavg >= MIN_TRAIN_MS) {
                 gap_type_t g = classify_gap(lowduration, hightimesavg);
 
                 if (g == GAP_CHAR) {          // ???
@@ -184,8 +185,8 @@ int cwDecoder()
         //////////////////////////////
         // write if no more letters //
         //////////////////////////////
-        uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
-        if ((millis() - startttimelow) > unit * 5 && stop == low) {
+        uint32_t unit = (hightimesavg >= MIN_TRAIN_MS) ? hightimesavg : 0;
+        if (unit > 0 && (millis() - startttimelow) > unit * 5 && stop == low) {
             decodeAscii(decode(code, &sw));
             code[0] = '\0';
             stop = high;

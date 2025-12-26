@@ -160,6 +160,16 @@ static const char* lookup_char(uint8_t data, const code_t *table, int count)
     return nullptr;
 }
 
+const char* encode_us_data(uint8_t data)
+{
+    return lookup_char(data, us_code, (int)(sizeof(us_code) / sizeof(us_code[0])));
+}
+
+const char* encode_jp_data(uint8_t data)
+{
+    return lookup_char(data, jp_code, (int)(sizeof(jp_code) / sizeof(jp_code[0])));
+}
+
 const char* encode_us_char(char c)
 {
     uint8_t data = 0;
@@ -172,7 +182,12 @@ const char* encode_us_char(char c)
         data = (uint8_t)c;
     }
 
-    return lookup_char(data, us_code, (int)(sizeof(us_code) / sizeof(us_code[0])));
+    return encode_us_data(data);
+}
+
+const char* encode_jp_char(uint8_t c)
+{
+    return encode_jp_data(c);
 }
 
 ////////////////////////////////

@@ -7,11 +7,12 @@
 #include "ch32v003fun.h"
 #include "ch32v003_GPIO_branchless.h"
 #include "keyer_hal.h"
-#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #define SSD1306_128X64
+#define printf(...) ((void)0)
 #include "ssd1306_i2c.h"
+#undef printf
 #include "ssd1306.h"
 #include "print_ascii.h"
 #include "message_keyer.h"
@@ -48,7 +49,20 @@ static void disp_header()
 {
     char buf[17];
 
-    mini_snprintf(buf, sizeof(buf), "UIAPKEYER %2dwpm", wpm);
+    const char prefix[] = "UIAPKEYER ";
+    const char suffix[] = "wpm";
+    unsigned int pos = 0;
+    for (unsigned int i = 0; i < sizeof(prefix) - 1 && pos < sizeof(buf) - 1; i++) {
+        buf[pos++] = prefix[i];
+    }
+    int tens = wpm / 10;
+    int ones = wpm % 10;
+    if (pos < sizeof(buf) - 1) buf[pos++] = (tens > 0) ? (char)('0' + tens) : ' ';
+    if (pos < sizeof(buf) - 1) buf[pos++] = (char)('0' + ones);
+    for (unsigned int i = 0; i < sizeof(suffix) - 1 && pos < sizeof(buf) - 1; i++) {
+        buf[pos++] = suffix[i];
+    }
+    buf[pos] = '\0';
     ssd1306_drawstr_sz(4, 0, buf, 1, fontsize_8x8);
 }
 
