@@ -48,9 +48,12 @@ static void draw_centered(uint8_t y, const char *text, uint8_t color)
 
 static void disp_record_select()
 {
-    oled_fill(1);
-    draw_centered(16, "RECORD MODE", 0);
-    draw_centered(32, "SELECT A or B", 0);
+//    oled_fill(1);
+//    draw_centered(16, "RECORD MODE", 0);
+//    draw_centered(32, "SELECT A or B", 0);
+    oled_fill(0);
+    draw_centered(0, "**RECORD MODE**", 0);
+    oled_hline(10, 1);
     oled_refresh();
 }
 
@@ -65,16 +68,29 @@ static void disp_recorded(uint8_t target)
     oled_refresh();
 }
 
+static void disp_record_canceled(uint8_t target)
+{
+    oled_fill(0);
+    if (target == 0) {
+        draw_centered(24, "SWA CANCELED", 1);
+    } else {
+        draw_centered(24, "SWB CANCELED", 1);
+    }
+    oled_refresh();
+}
+
 static void beep_pattern(uint8_t count)
 {
-    pwm_set_freq(600);
+    tim1_int_suspend();
+    pwm_set_freq(3000);
     for (uint8_t i = 0; i < count; i++) {
         start_pwm();
-        Delay_Ms(200);
+        Delay_Ms(80);
         stop_pwm();
-        Delay_Ms(200);
+        Delay_Ms(80);
     }
     pwm_restore_default();
+    tim1_int_resume();
 }
 
 static void rec_load_message_into(uint8_t index, uint8_t *buf)
@@ -183,6 +199,17 @@ void rec_record_finish(uint8_t target)
     save_message(target, save_buf);
     disp_recorded(target);
     Delay_Ms(1000);
+    disp_record_select();
+    ui_mode = UI_MODE_RECORD_SELECT;
+}
+
+void rec_record_cancel(uint8_t target)
+{
+    record_active = false;
+    setPrintAsciiHook(nullptr);
+    printAsciiReset();
+    disp_record_canceled(target);
+    Delay_Ms(1500);
     disp_record_select();
     ui_mode = UI_MODE_RECORD_SELECT;
 }

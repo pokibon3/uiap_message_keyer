@@ -20,5 +20,6 @@ void rec_enter_mode(void);
 void rec_exit_mode(void);
 void rec_record_start(uint8_t target);
 void rec_record_finish(uint8_t target);
+void rec_record_cancel(uint8_t target);
 
 void rec_load_message(uint8_t index);

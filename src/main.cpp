@@ -35,9 +35,9 @@ static char title3[]   = "  Version 1.1  ";
 void keyup();
 static volatile uint8_t req_start_msg = 0;
 // ==== 自動送信制御 ====
-// 起動時は何もしなぁE
-volatile bool auto_mode = false;   // 今、�E動送信中ぁE
-volatile bool auto_repeat = false; // リピ�Eト�E生中ぁE
+// 起動時は何もしない
+volatile bool auto_mode = false;   // 今、自動送信中
+volatile bool auto_repeat = false; // リピート再生中
 volatile bool req_start_auto = false;
 volatile bool req_stop_auto = false;
 volatile bool req_reset_auto = false;
@@ -103,7 +103,7 @@ void oled_refresh(void)
     ssd1306_refresh();
 }
 
-// ===================== 手動パドル処琁E��EWA/SWBは混ぜなぁE��E=====================
+// ===================== 手動パドル処理（SWA/SWBは混ぜない）=====================
 uint8_t job_paddle()
 {
     static uint32_t left_time = 0;
@@ -190,7 +190,7 @@ uint8_t job_paddle()
     return 1;
 }
 
-// ===================== ト�Eン制御 =====================
+// ===================== トーン制御 =====================
 void keydown()
 {
     if (tone_enabled) return;
@@ -218,10 +218,10 @@ static inline long map(long x,
                               long in_min, long in_max,
                               long out_min, long out_max)
 {
-    // Arduino本家と同じくゼロ除算チェチE��はしなぁE��En_max == in_min だと未定義�E�E
+    // Arduino本家と同じくゼロ除算チェックはしない。in_max == in_min だと未定義。
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
-// ==== ADCからスピ�Eド読み込み ====
+// ==== ADCからスピード読み込み ====
 void update_speed_from_adc()
 {
     static int old_wpm;
@@ -245,7 +245,7 @@ void update_speed_from_adc()
 }
 
 
-// ===================== タイマ�E割り込み =====================
+// ===================== タイマー割り込み =====================
 void TIM1_UP_IRQHandler(void)
 {
 
@@ -316,7 +316,7 @@ int main()
     disp_title();
     while (1)
     {
-        // SWA/SWB チE��ウンスとモード制御�E�離した時に確定！E
+        // SWA/SWB デバウンスとモード制御は離した時に確定！
         static uint32_t tA = 0;
         static uint32_t tB = 0;
         static int lastA = high;
@@ -333,7 +333,10 @@ int main()
         static uint32_t combo_start = 0;
         static bool combo_armed = false;
         static bool combo_fired = false;
+        static int rec_target = -1;
         const uint32_t DEB = 30;
+        const uint32_t LONG_PRESS_MS = 1500;
+        const uint32_t RECORD_MIN_PRESS_MS = 80;
         static bool display_enabled = true;
 
 		static uint32_t last_tick = 0;
@@ -354,7 +357,7 @@ int main()
                     swa_press_time = now;
                     swa_long_fired = false;
                     swa_ignore_release = false;
-		        } else {
+                } else {
                     if (swa_ignore_release) {
                         swa_ignore_release = false;
                         swa_pressed = false;
@@ -365,22 +368,39 @@ int main()
                         }
                     } else {
                         ui_mode_t mode = rec_get_ui_mode();
+                        uint32_t held = now - swa_press_time;
+                        if (mode != UI_MODE_NORMAL && held < RECORD_MIN_PRESS_MS) {
+                            swa_pressed = false;
+                            if (combo_armed) {
+                                combo_armed = false;
+                                combo_fired = false;
+                                combo_start = 0;
+                            }
+                            goto swa_release_done;
+                        }
                         if (mode == UI_MODE_RECORD_SELECT) {
                             rec_record_start(0);
+                            rec_target = 0;
                         } else if (mode == UI_MODE_RECORDING) {
-                            rec_record_finish(0);
+                            if (rec_target == 0) {
+                                rec_record_finish(0);
+                                rec_target = -1;
+                            } else if (rec_target == 1) {
+                                rec_record_cancel(1);
+                                rec_target = -1;
+                            }
                         } else if (mode == UI_MODE_NORMAL) {
                             if (auto_mode) {
                                 req_stop_auto = true;
                             } else {
-                                uint32_t held = now - swa_press_time;
-                                auto_repeat = (held >= 2000);
+                                auto_repeat = (held >= LONG_PRESS_MS);
                                 req_start_msg = 0;
                                 rec_load_message(0);
                                 req_start_auto = true;
                             }
                         }
                     }
+                swa_release_done:
                     if (combo_armed) {
                         combo_armed = false;
                         combo_fired = false;
@@ -398,7 +418,7 @@ int main()
                     swb_press_time = now;
                     swb_long_fired = false;
                     swb_ignore_release = false;
-		        } else {
+                } else {
                     if (swb_ignore_release) {
                         swb_ignore_release = false;
                         swb_pressed = false;
@@ -409,22 +429,39 @@ int main()
                         }
                     } else {
                         ui_mode_t mode = rec_get_ui_mode();
+                        uint32_t held = now - swb_press_time;
+                        if (mode != UI_MODE_NORMAL && held < RECORD_MIN_PRESS_MS) {
+                            swb_pressed = false;
+                            if (combo_armed) {
+                                combo_armed = false;
+                                combo_fired = false;
+                                combo_start = 0;
+                            }
+                            goto swb_release_done;
+                        }
                         if (mode == UI_MODE_RECORD_SELECT) {
                             rec_record_start(1);
+                            rec_target = 1;
                         } else if (mode == UI_MODE_RECORDING) {
-                            rec_record_finish(1);
+                            if (rec_target == 1) {
+                                rec_record_finish(1);
+                                rec_target = -1;
+                            } else if (rec_target == 0) {
+                                rec_record_cancel(0);
+                                rec_target = -1;
+                            }
                         } else if (mode == UI_MODE_NORMAL) {
                             if (auto_mode) {
                                 req_stop_auto = true;
                             } else {
-                                uint32_t held = now - swb_press_time;
-                                auto_repeat = (held >= 2000);
+                                auto_repeat = (held >= LONG_PRESS_MS);
                                 req_start_msg = 1;
                                 rec_load_message(1);
                                 req_start_auto = true;
                             }
                         }
                     }
+                swb_release_done:
                     if (combo_armed) {
                         combo_armed = false;
                         combo_fired = false;
@@ -440,7 +477,7 @@ int main()
                     combo_start = now;
                     combo_fired = false;
                 }
-                if (combo_armed && !combo_fired && (now - combo_start) >= 2000) {
+                if (combo_armed && !combo_fired && (now - combo_start) >= LONG_PRESS_MS) {
                     combo_fired = true;
                     combo_armed = false;
                     combo_start = 0;
@@ -453,17 +490,18 @@ int main()
                         rec_enter_mode();
                     } else {
                         rec_exit_mode();
+                        rec_target = -1;
                     }
                 }
             } else if (rec_get_ui_mode() == UI_MODE_NORMAL && !auto_mode && !combo_release_suppress) {
-                if (swa_pressed && !swb_pressed && !swa_long_fired && (now - swa_press_time) >= 2000) {
+                if (swa_pressed && !swb_pressed && !swa_long_fired && (now - swa_press_time) >= LONG_PRESS_MS) {
                     swa_long_fired = true;
                     swa_ignore_release = true;
                     auto_repeat = true;
                     req_start_msg = 0;
                     rec_load_message(0);
                     req_start_auto = true;
-                } else if (swb_pressed && !swa_pressed && !swb_long_fired && (now - swb_press_time) >= 2000) {
+                } else if (swb_pressed && !swa_pressed && !swb_long_fired && (now - swb_press_time) >= LONG_PRESS_MS) {
                     swb_long_fired = true;
                     swb_ignore_release = true;
                     auto_repeat = true;
@@ -499,5 +537,7 @@ int main()
   		Delay_Ms(1);
     }
 }
+
+
 
 

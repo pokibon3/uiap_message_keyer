@@ -23,5 +23,7 @@ extern void tim2_pwm_init(void);
 void pwm_set_freq(uint32_t hz);
 void pwm_restore_default(void);
 extern void tim1_int_init(void);
+void tim1_int_suspend(void);
+void tim1_int_resume(void);
 
 extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));

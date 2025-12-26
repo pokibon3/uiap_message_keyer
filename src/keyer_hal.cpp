@@ -40,6 +40,16 @@ void tim1_int_init()
     TIM1->CTLR1 |= TIM_CEN;
 }
 
+void tim1_int_suspend()
+{
+    TIM1->DMAINTENR &= (uint16_t)~TIM_IT_Update;
+}
+
+void tim1_int_resume()
+{
+    TIM1->DMAINTENR |= TIM_IT_Update;
+}
+
 /*
  * initialize TIM2 for PWM
  */
