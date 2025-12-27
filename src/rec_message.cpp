@@ -34,6 +34,65 @@ static volatile bool record_active = false;
 static ui_mode_t ui_mode = UI_MODE_NORMAL;
 static rec_header_cb_t header_cb = nullptr;
 
+static const char default_msg_a[] =
+    "VVV DE JA1AOQ BT UIAP MESSAGE KEYER IS A COMPACT HAM RADIO KEYER FOR UIAPduino, "
+    "STORING AUTO MESSAGES IN FLASH AND SENDING CLEAR CW CODE FOR PORTABLE OPS AND DEMOS. "
+    "73 AR TU VA E E";
+
+static uint8_t map_prosign_token(const char *token, size_t len)
+{
+    if (len == 2) {
+        if (token[0] == 'A' && token[1] == 'R') return (uint8_t)'a';
+        if (token[0] == 'B' && token[1] == 'T') return (uint8_t)'b';
+        if (token[0] == 'K' && token[1] == 'N') return (uint8_t)'k';
+        if (token[0] == 'V' && token[1] == 'A') return (uint8_t)'v';
+    }
+    return 0;
+}
+
+static void build_message_from_text(uint8_t *buf, const char *msg)
+{
+    if (buf == nullptr || msg == nullptr) return;
+    memset(buf, 0, RECORD_MSG_SIZE);
+    uint16_t len = 0;
+    const char *p = msg;
+
+    while (*p != '\0' && len < RECORD_MAX_LEN) {
+        if (*p == ' ') {
+            buf[1 + len] = (uint8_t)' ';
+            len++;
+            p++;
+            continue;
+        }
+        const char *start = p;
+        while (*p != '\0' && *p != ' ') p++;
+        size_t tok_len = (size_t)(p - start);
+        uint8_t mapped = map_prosign_token(start, tok_len);
+        if (mapped != 0) {
+            buf[1 + len] = mapped;
+            len++;
+        } else {
+            for (size_t i = 0; i < tok_len && len < RECORD_MAX_LEN; i++) {
+                buf[1 + len] = (uint8_t)start[i];
+                len++;
+            }
+        }
+    }
+    buf[0] = (uint8_t)len;
+}
+
+static bool flash_message_uninitialized(uint8_t index)
+{
+    uint8_t page[FLASH_PAGE_SIZE];
+    if (eep.read((index * RECORD_PAGES_PER_MSG), page) != 0) {
+        return false;
+    }
+    for (uint8_t i = 0; i < 4; i++) {
+        if (page[i] != 0xFF) return false;
+    }
+    return true;
+}
+
 static void draw_centered(uint8_t y, const char *text, uint8_t color)
 {
     size_t len = strlen(text);
@@ -223,6 +282,10 @@ void rec_init()
 {
     eep.begin(RECORD_PAGE_COUNT);
     memset(msg_buf, 0, RECORD_MSG_SIZE);
+    if (flash_message_uninitialized(0)) {
+        build_message_from_text(msg_buf, default_msg_a);
+        save_message(0, msg_buf);
+    }
     rec_load_message(0);
     set_message_buffers(msg_buf, msg_buf);
 }
