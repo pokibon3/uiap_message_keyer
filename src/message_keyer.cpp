@@ -1,11 +1,7 @@
 #include "message_keyer.h"
 #include "print_ascii.h"
 #include "decode.h"
-
-extern int key_spd;
-extern volatile bool req_reset_auto;
-extern volatile bool auto_repeat;
-extern volatile bool auto_finished;
+#include "keyer.h"
 
 static uint8_t *msg_bufs[2] = {nullptr, nullptr};
 static uint8_t active_msg = 0;

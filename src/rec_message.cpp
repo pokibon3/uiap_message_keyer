@@ -1,12 +1,14 @@
-﻿//==================================================================//
+//==================================================================//
 // Record message helper
 //==================================================================//
 #include "rec_message.h"
 #include "ch32v003fun.h"
 #include "ch32v003_GPIO_branchless.h"
 #include "keyer_hal.h"
+#include "keyer.h"
 #include <string.h>
 #include "print_ascii.h"
+#include "oled.h"
 #include "message_keyer.h"
 #include "flash_eep.h"
 
@@ -15,14 +17,6 @@
 #define RECORD_PAGES_PER_MSG 4
 #define RECORD_MAX_LEN 255
 
-extern volatile bool auto_mode;
-extern volatile bool auto_repeat;
-extern volatile bool req_start_auto;
-extern volatile bool req_stop_auto;
-extern volatile bool req_reset_auto;
-extern volatile bool auto_finished;
-extern void keyup();
-extern int wpm;
 
 FLASH_EEP eep;
 
@@ -38,7 +32,7 @@ static rec_header_cb_t header_cb = nullptr;
 void rec_draw_header(void);
 
 static const char default_msg_a[] =
-    "VVV DE JA1AOQ BT UIAP MESSAGE KEYER IS A COMPACT HAM RADIO KEYER FOR UIAPduino, "
+    "VVV DE JA1AOQ BT UIAP MESSAGE KEYER IS A COMPACT HAM RADIO KEYER FOR UIAPDUINO, "
     "STORING AUTO MESSAGES IN FLASH AND SENDING CLEAR CW CODE FOR PORTABLE OPS AND DEMOS. "
     "73 AR TU VA E E";
 
@@ -101,52 +95,52 @@ static void draw_centered(uint8_t y, const char *text, uint8_t color)
     size_t len = strlen(text);
     uint16_t width = (uint16_t)(len * 8);
     uint8_t x = 0;
-    uint8_t w = oled_width();
+    uint8_t w = g_oled.width();
     if (width < w) {
         x = (uint8_t)((w - width) / 2);
     }
-    oled_drawstr8(x, y, text, color);
+    g_oled.drawStr8(x, y, text, color);
 }
 
 static void disp_record_select()
 {
-    oled_fill(0);
+    g_oled.fill(0);
     rec_draw_header();
-    oled_hline(10, 1);
-    oled_refresh();
+    g_oled.hline(10, 1);
+    g_oled.refresh();
 }
 
 static void disp_recorded(uint8_t target)
 {
-    oled_fill(0);
+    g_oled.fill(0);
     if (target == 0) {
         draw_centered(24, "SWA RECORDED", 1);
     } else {
         draw_centered(24, "SWB RECORDED", 1);
     }
-    oled_refresh();
+    g_oled.refresh();
 }
 
 static void disp_record_start(uint8_t target)
 {
-    oled_fill(0);
+    g_oled.fill(0);
     if (target == 0) {
         draw_centered(24, "SWA RECORDING", 1);
     } else {
         draw_centered(24, "SWB RECORDING", 1);
     }
-    oled_refresh();
+    g_oled.refresh();
 }
 
 static void disp_record_canceled(uint8_t target)
 {
-    oled_fill(0);
+    g_oled.fill(0);
     if (target == 0) {
         draw_centered(24, "SWA CANCELED", 1);
     } else {
         draw_centered(24, "SWB CANCELED", 1);
     }
-    oled_refresh();
+    g_oled.refresh();
 }
 
 void rec_draw_header(void)
@@ -169,9 +163,9 @@ void rec_draw_header(void)
         buf[pos++] = suffix[i];
     }
     for (uint8_t y = 0; y < 8; y++) {
-        oled_hline(y, 1);
+        g_oled.hline(y, 1);
     }
-    oled_drawstr8(4, 0, buf, 0);
+    g_oled.drawStr8(4, 0, buf, 0);
 }
 
 static void beep_pattern(uint8_t count)
@@ -268,12 +262,12 @@ void rec_exit_mode()
     printAsciiReset();
     beep_pattern(4);
     ui_mode = UI_MODE_NORMAL;
-    oled_fill(0);
+    g_oled.fill(0);
     if (header_cb != nullptr) {
         header_cb();
     }
-    oled_hline(10, 1);
-    oled_refresh();
+    g_oled.hline(10, 1);
+    g_oled.refresh();
 }
 
 void rec_record_start(uint8_t target)
@@ -290,10 +284,10 @@ void rec_record_start(uint8_t target)
     record_active = true;
     setPrintAsciiHook(record_char_hook);
     printAsciiReset();
-    oled_fill(0);
+    g_oled.fill(0);
     rec_draw_header();
-    oled_hline(10, 1);
-    oled_refresh();
+    g_oled.hline(10, 1);
+    g_oled.refresh();
     ui_mode = UI_MODE_RECORDING;
 }
 

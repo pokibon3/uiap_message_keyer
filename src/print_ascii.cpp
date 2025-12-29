@@ -1,4 +1,5 @@
 #include "print_ascii.h"
+#include "oled.h"
 #include <string.h>
 #define FONT_WIDTH 12
 #define FONT_COLOR 1
@@ -54,13 +55,13 @@ static void printAsc(int8_t asciinumber)
             line0[i] = 32;
         }
         for (int i = 0; i <= colums - 1 ; i++){
-            oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT, line2[i], FONT_COLOR);
-            oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT * 2, line1[i], FONT_COLOR);
-            oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT * 3, line0[i], FONT_COLOR);
+            g_oled.drawChar16(i * FONT_WIDTH , LINE_HEIGHT, line2[i], FONT_COLOR);
+            g_oled.drawChar16(i * FONT_WIDTH , LINE_HEIGHT * 2, line1[i], FONT_COLOR);
+            g_oled.drawChar16(i * FONT_WIDTH , LINE_HEIGHT * 3, line0[i], FONT_COLOR);
         }
     }
     line0[lcdindex] = asciinumber;
-    oled_drawchar16(lcdindex * FONT_WIDTH , LINE_HEIGHT * 3, asciinumber, FONT_COLOR);
+    g_oled.drawChar16(lcdindex * FONT_WIDTH , LINE_HEIGHT * 3, asciinumber, FONT_COLOR);
     display_dirty = true;
     lcdindex += 1;
 }
@@ -99,7 +100,7 @@ void displayFlushIfNeeded(void)
 {
     if (display_enabled && display_dirty) {
         display_dirty = false;
-        oled_refresh();
+        g_oled.refresh();
     }
 }
 
@@ -132,7 +133,7 @@ void printAsciiBackspace(void)
     if (lcdindex > 0) {
         lcdindex -= 1;
         line0[lcdindex] = 32;
-        oled_drawchar16(lcdindex * FONT_WIDTH, LINE_HEIGHT * 3, 32, FONT_COLOR);
+        g_oled.drawChar16(lcdindex * FONT_WIDTH, LINE_HEIGHT * 3, 32, FONT_COLOR);
         display_dirty = true;
         return;
     }
@@ -166,9 +167,9 @@ void printAsciiBackspace(void)
     lcdindex = last;
     line0[lcdindex] = 32;
     for (int i = 0; i < colums; i++) {
-        oled_drawchar16(i * FONT_WIDTH, LINE_HEIGHT, line2[i], FONT_COLOR);
-        oled_drawchar16(i * FONT_WIDTH, LINE_HEIGHT * 2, line1[i], FONT_COLOR);
-        oled_drawchar16(i * FONT_WIDTH, LINE_HEIGHT * 3, line0[i], FONT_COLOR);
+        g_oled.drawChar16(i * FONT_WIDTH, LINE_HEIGHT, line2[i], FONT_COLOR);
+        g_oled.drawChar16(i * FONT_WIDTH, LINE_HEIGHT * 2, line1[i], FONT_COLOR);
+        g_oled.drawChar16(i * FONT_WIDTH, LINE_HEIGHT * 3, line0[i], FONT_COLOR);
     }
     display_dirty = true;
 }
@@ -182,9 +183,9 @@ void printAsciiNewline(void)
         line0[i] = 32;
     }
     for (int i = 0; i <= colums - 1 ; i++){
-        oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT, line2[i], FONT_COLOR);
-        oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT * 2, line1[i], FONT_COLOR);
-        oled_drawchar16(i * FONT_WIDTH , LINE_HEIGHT * 3, line0[i], FONT_COLOR);
+        g_oled.drawChar16(i * FONT_WIDTH , LINE_HEIGHT, line2[i], FONT_COLOR);
+        g_oled.drawChar16(i * FONT_WIDTH , LINE_HEIGHT * 2, line1[i], FONT_COLOR);
+        g_oled.drawChar16(i * FONT_WIDTH , LINE_HEIGHT * 3, line0[i], FONT_COLOR);
     }
     display_dirty = true;
 }
