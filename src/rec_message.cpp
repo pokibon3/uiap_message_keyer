@@ -254,13 +254,15 @@ void rec_enter_mode()
     disp_record_select();
 }
 
-void rec_exit_mode()
+static void exit_record_mode(bool beep)
 {
     record_active = false;
     record_mode = false;
     setPrintAsciiHook(nullptr);
     printAsciiReset();
-    beep_pattern(4);
+    if (beep) {
+        beep_pattern(2);
+    }
     ui_mode = UI_MODE_NORMAL;
     g_oled.fill(0);
     if (header_cb != nullptr) {
@@ -268,6 +270,11 @@ void rec_exit_mode()
     }
     g_oled.hline(10, 1);
     g_oled.refresh();
+}
+
+void rec_exit_mode()
+{
+    exit_record_mode(true);
 }
 
 void rec_record_start(uint8_t target)
@@ -295,7 +302,7 @@ void rec_record_finish(uint8_t target)
 {
     record_active = false;
     setPrintAsciiHook(nullptr);
-    beep_pattern(1);
+    beep_pattern(2);
     uint8_t *save_buf = msg_buf;
     if (save_buf == nullptr) {
         ui_mode = UI_MODE_RECORD_SELECT;
@@ -305,8 +312,7 @@ void rec_record_finish(uint8_t target)
     save_message(target, save_buf);
     disp_recorded(target);
     Delay_Ms(1000);
-    disp_record_select();
-    ui_mode = UI_MODE_RECORD_SELECT;
+    exit_record_mode(false);
 }
 
 void rec_record_cancel(uint8_t target)
@@ -314,10 +320,10 @@ void rec_record_cancel(uint8_t target)
     record_active = false;
     setPrintAsciiHook(nullptr);
     printAsciiReset();
+    beep_pattern(3);
     disp_record_canceled(target);
     Delay_Ms(1500);
-    disp_record_select();
-    ui_mode = UI_MODE_RECORD_SELECT;
+    exit_record_mode(false);
 }
 
 void rec_handle_correction(void)
