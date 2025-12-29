@@ -1,11 +1,7 @@
 #include "message_keyer.h"
 #include "print_ascii.h"
 #include "decode.h"
-
-extern int key_spd;
-extern volatile bool req_reset_auto;
-extern volatile bool auto_repeat;
-extern volatile bool auto_finished;
+#include "keyer.h"
 
 static uint8_t *msg_bufs[2] = {nullptr, nullptr};
 static uint8_t active_msg = 0;
@@ -14,6 +10,17 @@ static uint8_t advance_after = 1;
 
 const char* morseForChar(char c) {
   return encode_us_char(c);
+}
+
+static int repeat_gap_half(void)
+{
+    if (key_spd == 0) return 12;
+    uint32_t half_dot_us = (uint32_t)key_spd * 128u;
+    if (half_dot_us == 0) return 12;
+    uint32_t half_dots = (2000000u + (half_dot_us / 2u)) / half_dot_us;
+    if (half_dots == 0) half_dots = 1;
+    if (half_dots > 0x7FFFu) half_dots = 0x7FFFu;
+    return (int)half_dots;
 }
 
 void set_message_buffers(uint8_t *msg_a, uint8_t *msg_b)
@@ -118,6 +125,9 @@ uint8_t job_auto()
         enc_mode = MODE_US;
         advance_after = 1;
         pending_mode = -1;
+        if (!printAsciiAtLineStart()) {
+            printAsciiNewline();
+        }
     }
 
     if (left_time != 0) {
@@ -151,8 +161,9 @@ uint8_t job_auto()
             auto_finished = true;
             return 0;
         }
+        printAsciiNewline();
         pos = 0;
-        gap_half = 12;
+        gap_half = repeat_gap_half();
         return 0;
     }
 
@@ -274,7 +285,8 @@ uint8_t job_auto()
                     return 0;
                 }
                 pending_pos = 0;
-                pending_gap_half = 12;
+                printAsciiNewline();
+                pending_gap_half = repeat_gap_half();
                 pending_jump = true;
             } else {
                 pending_pos = look;

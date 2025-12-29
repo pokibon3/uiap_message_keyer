@@ -5,6 +5,7 @@
 #include "ch32v003_GPIO_branchless.h"
 #include "keyer_hal.h"
 #include "print_ascii.h"
+#include "rec_message.h"
 
 //#define SERIAL_OUT
 
@@ -72,6 +73,18 @@ static int decodeAscii(int16_t asciinumber)
 {
     if (asciinumber == 0) return 0;
     if (lastChar == 32 && asciinumber == 32) return 0;
+
+    if (asciinumber == 7) {            // HH correction
+        if (rec_is_record_mode()) {
+            rec_handle_correction();
+            lastChar = 0;
+            return 0;
+        }
+        printAscii('H');
+        printAscii('H');
+        lastChar = 'H';
+        return 0;
+    }
 
     if        (asciinumber == 1) {            // AR
         printAscii('A');

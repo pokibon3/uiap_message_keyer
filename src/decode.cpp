@@ -63,6 +63,7 @@ static const code_t us_code[] = {
     {"-...-", 3},    // BT
     {"...-.-", 4},   // VA
     {"-..---", 5},   // ホレ
+    {"........", 7}, // HH (correction)
 };
 
 static const code_t jp_code[] = {
@@ -138,6 +139,7 @@ static const code_t jp_code[] = {
     {".-.-..", 0xA3}, // 」
     {".-.-.-", 0xA4}, // 、
     {"...-.",  6},    // ラタ
+    {"........", 7}, // HH (correction)
 };
 
 static int16_t lookup_code(const char *code, const code_t *table, int count)

@@ -11,6 +11,7 @@ typedef enum {
 typedef void (*rec_header_cb_t)(void);
 
 void rec_set_header_cb(rec_header_cb_t cb);
+void rec_draw_header(void);
 void rec_init(void);
 
 bool rec_is_record_mode(void);
@@ -21,5 +22,6 @@ void rec_exit_mode(void);
 void rec_record_start(uint8_t target);
 void rec_record_finish(uint8_t target);
 void rec_record_cancel(uint8_t target);
+void rec_handle_correction(void);
 
 void rec_load_message(uint8_t index);
