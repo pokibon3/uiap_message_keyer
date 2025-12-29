@@ -50,98 +50,6 @@ void tim1_int_resume()
     TIM1->DMAINTENR |= TIM_IT_Update;
 }
 
-/*
- * initialize TIM2 for PWM
- */
- #define TIM2_DEFAULT 0xff
-static uint16_t pwm_default_psc = 312;
-static uint16_t pwm_default_arr = 255;
-
-void tim2_pwm_init( void )
-{
-    // Enable GPIOC and TIM2
-    RCC->APB2PCENR |= RCC_APB2Periph_GPIOC;
-    RCC->APB1PCENR |= RCC_APB1Periph_TIM2;
-    RCC->APB2PCENR |= RCC_APB2Periph_AFIO;
-
-    AFIO->PCFR1 &= ~AFIO_PCFR1_TIM2_REMAP_FULLREMAP;
-    AFIO->PCFR1 |= AFIO_PCFR1_TIM2_REMAP_FULLREMAP;
-    // PC7 is T2CH2, 10MHz Output alt func, push-pull
-    GPIOC->CFGLR &= ~(0xf<<(4*7));
-    GPIOC->CFGLR |= (GPIO_Speed_10MHz | GPIO_CNF_OUT_PP_AF)<<(4*7);
-
-    // Reset TIM2 to init all regs
-    RCC->APB1PRSTR |= RCC_APB1Periph_TIM2;
-    RCC->APB1PRSTR &= ~RCC_APB1Periph_TIM2;
-    
-    // SMCFGR: default clk input is CK_INT
-    // set TIM2 clock prescaler divider 
-    TIM2->PSC = pwm_default_psc;
-    // set PWM total cycle width
-    TIM2->ATRLR = pwm_default_arr;
-    
-    // for channel 1 and 2, let CCxS stay 00 (output), set OCxM to 110 (PWM I)
-    // enabling preload causes the new pulse width in compare capture register only to come into effect when UG bit in SWEVGR is set (= initiate update) (auto-clears)
-    TIM2->CHCTLR1 |= TIM_OC1M_2 | TIM_OC1M_1 | TIM_OC1PE | TIM_OC2M_2 | TIM_OC2M_1 | TIM_OC2PE;
-
-    // CTLR1: default is up, events generated, edge align
-    // enable auto-reload of preload
-    TIM2->CTLR1 |= TIM_ARPE;
-
-    // Enable Channel outputs, set default state (based on TIM2_DEFAULT)
-    TIM2->CCER |= TIM_CC1E | (TIM_CC1P & TIM2_DEFAULT);
-    TIM2->CCER |= TIM_CC2E | (TIM_CC2P & TIM2_DEFAULT);
-
-    // initialize counter
-    TIM2->SWEVGR |= TIM_UG;
-    // set default duty cycle 50% for channel 1 (600Hz tone)
-    TIM2->CH2CVR = (uint16_t)(pwm_default_arr / 2);
-    // Enable TIM2
-    //TIM2->CTLR1 |= TIM_CEN;
-}
-
-// ===================== ????? =====================
-void start_pwm() 
-{
-    AFIO->PCFR1 |= AFIO_PCFR1_TIM2_REMAP_FULLREMAP;
-    TIM2->CNT = 0;
-    TIM2->SWEVGR |= TIM_UG;
-    TIM2->CTLR1 |= TIM_CEN;
-}
-
-void stop_pwm() 
-{
-    AFIO->PCFR1 &= ~AFIO_PCFR1_TIM2_REMAP_FULLREMAP;
-    TIM2->CTLR1 &= ~TIM_CEN;
-}
-
-void pwm_set_freq(uint32_t hz)
-{
-    if (hz == 0) return;
-    uint32_t base_clk = 48000000u;
-    uint32_t target_clk = 1000000;
-    uint32_t psc = (base_clk / target_clk);
-    if (psc == 0) psc = 1;
-    if (psc > 0) psc -= 1;
-    uint32_t arr = (target_clk / hz);
-    if (arr == 0) arr = 1;
-    if (arr > 0) arr -= 1;
-    if (arr > 0xFFFF) arr = 0xFFFF;
-
-    TIM2->PSC = (uint16_t)psc;
-    TIM2->ATRLR = (uint16_t)arr;
-    TIM2->CH2CVR = (uint16_t)(arr / 2);
-    TIM2->SWEVGR |= TIM_UG;
-}
-
-void pwm_restore_default(void)
-{
-    TIM2->PSC = pwm_default_psc;
-    TIM2->ATRLR = pwm_default_arr;
-    TIM2->CH2CVR = (uint16_t)(pwm_default_arr / 2);
-    TIM2->SWEVGR |= TIM_UG;
-}
-
 //==================================================================
 //    setup
 //==================================================================
@@ -158,6 +66,7 @@ int GPIO_setup()
     GPIO_pinMode(PIN_SWB, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
     GPIO_pinMode(PIN_SPEED, GPIO_pinMode_I_analog, GPIO_Speed_10MHz);
     GPIO_pinMode(PIN_KEYOUT, GPIO_pinMode_O_pushPull, GPIO_Speed_10MHz);
-//    GPIO_pinMode(PIN_TONE, GPIO_pinMode_O_pushPull, GPIO_Speed_10MHz);
+    GPIO_pinMode(PIN_TONE, GPIO_pinMode_O_pushPull, GPIO_Speed_10MHz);
+    GPIO_digitalWrite(PIN_TONE, low);
     return 0;
 }

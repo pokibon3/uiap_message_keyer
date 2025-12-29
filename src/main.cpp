@@ -25,6 +25,8 @@
 int  key_spd = 1000;
 int  wpm = 20;
 bool tone_enabled = false;
+static volatile uint8_t tone_div = 0;
+static volatile bool tone_state = false;
 volatile bool display_request = true;
 int squeeze = 0;
 int paddle = PDL_FREE;
@@ -32,7 +34,7 @@ int paddle_old = PDL_FREE;
 static bool header_dirty = false;
 static char title1[]   = "  UIAP Message ";
 static char title2[]   = "     KEYER     ";
-static char title3[]   = "  Version 1.1  ";
+static char title3[]   = "  Version 1.2  ";
 void keyup();
 static volatile uint8_t req_start_msg = 0;
 // ==== 自動送信制御 ====
@@ -209,7 +211,9 @@ void keydown()
 {
     if (tone_enabled) return;
     tone_enabled = true;
-	start_pwm();
+    tone_div = 0;
+    tone_state = false;
+    GPIO_digitalWrite(PIN_TONE, low);
     display_request = false;
     if (!rec_is_record_mode()) {
 	    GPIO_digitalWrite(PIN_KEYOUT, high);  // ON
@@ -219,8 +223,10 @@ void keydown()
 
 void keyup()
 {
-	stop_pwm();
     tone_enabled = false;
+    tone_div = 0;
+    tone_state = false;
+    GPIO_digitalWrite(PIN_TONE, low);
     display_request = true;
     if (!rec_is_record_mode()) {
 	    GPIO_digitalWrite(PIN_KEYOUT, low);   // OFF
@@ -247,7 +253,11 @@ void update_speed_from_adc()
         old_wpm = new_wpm;
         wpm = new_wpm;
         key_spd = 4687 / wpm;  // = (1200/wpm) /0.256  4687.5 -> 4687
-        disp_header();
+        if (rec_is_record_mode()) {
+            rec_draw_header();
+        } else {
+            disp_header();
+        }
         if (display_request) {
             ssd1306_refresh();
         } else {
@@ -311,6 +321,21 @@ void TIM1_UP_IRQHandler(void)
     } else {
         keyup();
     }
+    if (tone_enabled) {
+        tone_div++;
+        if (tone_div >= 2) {
+            tone_div = 0;
+            tone_state = !tone_state;
+            if (tone_state) {
+                GPIO_digitalWrite(PIN_TONE, high);
+            } else {
+                GPIO_digitalWrite(PIN_TONE, low);
+            }
+        }
+    } else if (tone_state) {
+        tone_state = false;
+        GPIO_digitalWrite(PIN_TONE, low);
+    }
 }
 
 //
@@ -321,10 +346,9 @@ int main()
     SystemInit();
   	ssd1306_i2c_init();
 	ssd1306_init();
-  	GPIO_setup();				// gpio Setup;
+	GPIO_setup();				// gpio Setup;
 	GPIO_ADCinit();
 	tim1_int_init();			//
-	tim2_pwm_init();            // TIM2 PWM Setup
     rec_set_header_cb(disp_header);
     rec_init();
     disp_title();

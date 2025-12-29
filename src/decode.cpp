@@ -63,6 +63,7 @@ static const code_t us_code[] = {
     {"-...-", 3},    // BT
     {"...-.-", 4},   // VA
     {"-..---", 5},   // ホレ
+    {"........", 7}, // HH (correction)
 };
 
 static const code_t jp_code[] = {
