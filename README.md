@@ -1,4 +1,4 @@
-# UIAP Message Keyer (CH32V003) Ver1.1
+# UIAP Message Keyer (CH32V003) Ver1.2
 
 OLED表示、メッセージ自動送信/録音、CWデコード表示を備えたCWキーヤー。
 蚰蜒倶楽部さんが電波文化祭2025で配布されていた[UIAP KEYER](https://www.gejigeji.com/?page_id=1045)のファームウェアをベースに拡張したものです。  
@@ -53,3 +53,4 @@ OLED表示、メッセージ記録/送信、CWデコード機能を追加して�
 Ver 1.0 2025/12/21 新規作成  
 Ver 1.1 2025/12/26 メッセージ記録機能追加  
 Ver 1.2 2025/12/29 Record mode update
+
